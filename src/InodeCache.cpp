@@ -323,14 +323,41 @@ InodeCache::hash_inode(const std::string& path,
   key.st_dev = de.device();
   key.st_ino = de.inode();
   key.st_mode = de.mode();
-  key.st_mtim = de.mtime().to_timespec();
-  key.st_ctim = de.ctime().to_timespec();
+  // Note: Manually copying sec and nsec of mtime and ctime to prevent copying
+  // the padding bytes
+  auto mtime = de.mtime().to_timespec();
+  key.st_mtim.tv_sec = mtime.tv_sec;
+  key.st_mtim.tv_nsec = mtime.tv_nsec;
+  auto ctime = de.ctime().to_timespec();
+  key.st_ctim.tv_sec = ctime.tv_sec;
+  key.st_ctim.tv_nsec = ctime.tv_nsec;
   key.st_size = de.size();
+
+  if (m_config.debug()) {
+    LOG(
+      "hashing inode : [type :{}, dev: {}, ino: {}, mode: {}, mtime: {}.{}, "
+      "ctime: {}.{}, size: {}]",
+      (int)key.type,
+      key.st_dev,
+      key.st_ino,
+      key.st_mode,
+      key.st_mtim.tv_sec,
+      key.st_mtim.tv_nsec,
+      key.st_ctim.tv_sec,
+      key.st_ctim.tv_nsec,
+      key.st_size);
+  }
 
   Hash hash;
   hash.hash(nonstd::span<const uint8_t>(reinterpret_cast<const uint8_t*>(&key),
                                         sizeof(key)));
   digest = hash.digest();
+  if (m_config.debug()) {
+    LOG("Raw data to hash: {}",
+        util::format_base16(nonstd::span<const uint8_t>(
+          reinterpret_cast<const uint8_t*>(&key), sizeof(key))));
+    LOG("Resulting hash: {}", util::format_base16(digest));
+  }
   return true;
 }
 
@@ -338,6 +365,9 @@ bool
 InodeCache::with_bucket(const Hash::Digest& key_digest,
                         const BucketHandler& bucket_handler)
 {
+  if (m_config.debug()) {
+    LOG("Retriving bucket for {}", util::format_base16(key_digest));
+  }
   uint32_t hash;
   util::big_endian_to_int(key_digest.data(), hash);
   const uint32_t index = hash % k_num_buckets;
@@ -544,7 +574,14 @@ InodeCache::get(const std::string& path, ContentType type)
   std::optional<HashSourceCodeResult> result;
   Hash::Digest file_digest;
   const bool success = with_bucket(key_digest, [&](const auto bucket) {
+    if (m_config.debug()) {
+      LOG("Looking in bucket {}", (int)(bucket - m_sr->buckets));
+    }
     for (uint32_t i = 0; i < k_num_entries; ++i) {
+      if (m_config.debug()) {
+        LOG("Compare with key {}",
+            util::format_base16(bucket->entries[i].key_digest));
+      }
       if (bucket->entries[i].key_digest == key_digest) {
         if (i > 0) {
           Entry tmp = bucket->entries[i];

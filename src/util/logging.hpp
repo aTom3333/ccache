@@ -67,5 +67,6 @@ void bulk_log(std::string_view message);
 
 // Write the current log memory buffer to `path`.
 void dump_log(const std::string& path);
+void dump_stdout();
 
 } // namespace util::logging
