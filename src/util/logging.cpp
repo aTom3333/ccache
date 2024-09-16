@@ -185,4 +185,11 @@ dump_log(const std::string& path)
   }
 }
 
+void
+dump_stdout()
+{
+  (void)fwrite(debug_log_buffer.data(), debug_log_buffer.length(), 1, stdout);
+  (void)fflush(stdout);
+}
+
 } // namespace util::logging

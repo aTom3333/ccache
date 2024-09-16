@@ -23,7 +23,9 @@
 #include "TestUtil.hpp"
 
 #include <util/Fd.hpp>
+#include <util/TemporaryFile.hpp>
 #include <util/file.hpp>
+#include <util/logging.hpp>
 #include <util/path.hpp>
 
 #include "third_party/doctest.h"
@@ -39,8 +41,8 @@ namespace {
 bool
 inode_cache_available()
 {
-  util::Fd fd(open(util::actual_cwd().c_str(), O_RDONLY));
-  return fd && InodeCache::available(*fd);
+  auto tmp_file = util::TemporaryFile::create(util::actual_cwd() + "/fs_test");
+  return tmp_file && tmp_file->fd && InodeCache::available(*tmp_file->fd);
 }
 
 void
@@ -111,6 +113,8 @@ TEST_CASE("Test put and lookup")
   Config config;
   init(config);
 
+  util::logging::init(true, "test.log");
+
   InodeCache inode_cache(config, util::Duration(0));
   util::write_file("a", "a text");
 
@@ -120,6 +124,7 @@ TEST_CASE("Test put and lookup")
 
   auto return_value =
     inode_cache.get("a", InodeCache::ContentType::checked_for_temporal_macros);
+  util::logging::dump_stdout();
   REQUIRE(return_value);
   CHECK(return_value->first.to_bitmask()
         == static_cast<int>(HashSourceCode::found_date));
@@ -143,6 +148,8 @@ TEST_CASE("Test put and lookup")
 
   return_value =
     inode_cache.get("a", InodeCache::ContentType::checked_for_temporal_macros);
+
+  util::logging::dump_stdout();
   REQUIRE(return_value);
   CHECK(return_value->first.to_bitmask()
         == static_cast<int>(HashSourceCode::found_time));
@@ -175,6 +182,8 @@ TEST_CASE("Test content type")
   Config config;
   init(config);
 
+  util::logging::init(true, "test.log");
+
   InodeCache inode_cache(config, util::Duration(0));
   util::write_file("a", "a text");
   auto binary_digest = Hash().hash("binary").digest();
@@ -190,6 +199,7 @@ TEST_CASE("Test content type")
                         HashSourceCodeResult(HashSourceCode::found_time)));
 
   auto return_value = inode_cache.get("a", InodeCache::ContentType::raw);
+  util::logging::dump_stdout();
   REQUIRE(return_value);
   CHECK(return_value->first.to_bitmask()
         == static_cast<int>(HashSourceCode::found_date));
